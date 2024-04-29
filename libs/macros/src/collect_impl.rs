@@ -6,21 +6,24 @@
 //!
 //! A significant portion of code is copied from that file.
 //! There is no copyright issue because I am the only author.
-use std::process::id;
-use indexmap::{IndexMap, indexmap};
+use indexmap::{indexmap, IndexMap};
 use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro_kwargs::parse::{NestedDict, NestedList, Syn};
 use proc_macro_kwargs::{MacroArg, MacroKeywordArgs};
-use proc_macro_kwargs::parse::{Syn, NestedList, NestedDict};
-use syn::{Type, GenericParam, Expr, Error, Generics, WhereClause, parse_quote, Path, Lifetime, TypeParamBound, WherePredicate, Token, braced};
-use syn::parse::ParseStream;
 use quote::quote;
+use std::process::id;
+use syn::parse::ParseStream;
+use syn::{
+    braced, parse_quote, Error, Expr, GenericParam, Generics, Lifetime, Path, Token, Type,
+    TypeParamBound, WhereClause, WherePredicate,
+};
 
 use crate::helpers::{self, copygc_crate};
 
 fn empty_clause() -> WhereClause {
     WhereClause {
         predicates: Default::default(),
-        where_token: Default::default()
+        where_token: Default::default(),
     }
 }
 
@@ -94,16 +97,16 @@ impl MacroInput {
                     0 => {
                         return Err(Error::new(
                             Span::call_site(),
-                            "Using 'specific' CollectorId, but none specified"
+                            "Using 'specific' CollectorId, but none specified",
                         ));
-                    },
+                    }
                     1 => map.get_index(0).unwrap(),
                     _ => {
                         let mut errors = Vec::new();
                         for (pth, _) in map.iter() {
                             errors.push(Error::new_spanned(
                                 pth,
-                                "Multiple `CollectorId`s is currently unsupported"
+                                "Multiple `CollectorId`s is currently unsupported",
                             ));
                         }
                         return Err(helpers::combine_errors(errors).unwrap_err());
@@ -120,12 +123,16 @@ impl MacroInput {
         let null_collect_clause = match self.null_collect {
             TraitRequirements::Always { span: _ } => Some(empty_clause()),
             TraitRequirements::Where(ref clause) => Some(clause.clone()),
-            TraitRequirements::Never { span: _ } => None
+            TraitRequirements::Never { span: _ } => None,
         };
-        let null_collect_impl: TokenStream = if let Some(null_collect_clause) = null_collect_clause {
+        let null_collect_impl: TokenStream = if let Some(null_collect_clause) = null_collect_clause
+        {
             let mut generics = self.basic_generics();
             let collector_id = self.setup_collector_id_generics(&mut generics)?;
-            generics.make_where_clause().predicates.extend(null_collect_clause.predicates);
+            generics
+                .make_where_clause()
+                .predicates
+                .extend(null_collect_clause.predicates);
             let (impl_generics, _, where_clause) = generics.split_for_impl();
             quote! {
                 unsafe impl #impl_generics #copygc_crate::NullCollect<#collector_id> for #target_type
@@ -146,7 +153,10 @@ impl MacroInput {
         let collector_id = self.setup_collector_id_generics(&mut generics);
         {
             let clause = self.bounds.where_clause_collect(&self.params.elements)?;
-            generics.make_where_clause().predicates.extend(clause.predicates);
+            generics
+                .make_where_clause()
+                .predicates
+                .extend(clause.predicates);
         }
         // NOTE: The `expand` method implicitly skips body if `!Self::NEEDS_COLLECT`
         let collect_impl = self.copy_collect_closure.expand();
@@ -184,11 +194,14 @@ pub struct CustomBounds {
 }
 
 impl CustomBounds {
-    fn where_clause_collect(&self, generic_params: &[GenericParam]) -> Result<WhereClause, syn::Error> {
+    fn where_clause_collect(
+        &self,
+        generic_params: &[GenericParam],
+    ) -> Result<WhereClause, syn::Error> {
         match self.collect {
-            Some(TraitRequirements::Never { span}) => {
+            Some(TraitRequirements::Never { span }) => {
                 return Err(syn::Error::new(span, "Collect must always be implemented"))
-            },
+            }
             Some(TraitRequirements::Always) => Ok(empty_clause()), // No requirements
             Some(TraitRequirements::Where(ref explicit)) => Ok(explicit.clone()),
             None => {
@@ -197,8 +210,9 @@ impl CustomBounds {
                 Ok(create_clause_with_default(
                     &self.collect,
                     generic_params,
-                    vec![parse_quote!(#copygc_crate::Collect)]
-                ).expect("Already checked for TraitRequirements::Never"))
+                    vec![parse_quote!(#copygc_crate::Collect)],
+                )
+                .expect("Already checked for TraitRequirements::Never"))
             }
         }
     }
@@ -211,16 +225,12 @@ impl CustomBounds {
 #[derive(Clone, Debug)]
 pub enum TraitRequirements {
     /// The trait should never be implemented
-    Never {
-        span: Span
-    },
+    Never { span: Span },
     /// The trait should only be implemented if
     /// the specified where clause is satisfied
     Where(WhereClause),
     /// The trait should always be implemented
-    Always {
-        span: Span
-    }
+    Always { span: Span },
 }
 
 impl MacroArg for TraitRequirements {
@@ -235,7 +245,7 @@ impl MacroArg for TraitRequirements {
             } else {
                 Err(Error::new(
                     ident.span(),
-                    "Invalid identifier for `TraitRequirement`"
+                    "Invalid identifier for `TraitRequirement`",
                 ))
             }
         } else if input.peek(syn::token::Brace) {
@@ -248,13 +258,10 @@ impl MacroArg for TraitRequirements {
     }
 }
 
-
 #[derive(Clone, Debug)]
 pub enum CollectorIdInfo {
     Any,
-    Specific {
-        map: IndexMap<Path, Lifetime>
-    }
+    Specific { map: IndexMap<Path, Lifetime> },
 }
 impl Default for CollectorIdInfo {
     fn default() -> Self {
@@ -265,9 +272,11 @@ impl CollectorIdInfo {
     /// Create info from a single `CollectorId`,
     /// implicitly assuming its lifetime is `'gc`
     pub fn single(path: Path) -> Self {
-        CollectorIdInfo::Specific { map: indexmap! {
-            path => parse_quote!('gc)
-        } }
+        CollectorIdInfo::Specific {
+            map: indexmap! {
+                path => parse_quote!('gc)
+            },
+        }
     }
 }
 impl MacroArg for CollectorIdInfo {
@@ -280,7 +289,7 @@ impl MacroArg for CollectorIdInfo {
         } else if stream.peek(syn::token::Brace) {
             let inner = NestedDict::parse_macro_arg(stream)?;
             Ok(CollectorIdInfo::Specific {
-                map: inner.elements
+                map: inner.elements,
             })
         } else {
             Err(stream.error("Expected either `*`, a path, or a map of Path => Lifetime"))
@@ -288,11 +297,10 @@ impl MacroArg for CollectorIdInfo {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct KnownArgClosure {
     body: TokenStream,
-    brace: ::syn::token::Brace
+    brace: ::syn::token::Brace,
 }
 impl KnownArgClosure {
     pub fn parse_with_fixed_args(input: ParseStream, fixed_args: &[&str]) -> syn::Result<Self> {
@@ -309,16 +317,20 @@ impl KnownArgClosure {
         }
         let arg_end = input.parse::<Token![|]>()?.span;
         if actual_args.len() != fixed_args.len() {
-            return Err(Error::new(arg_start.join(arg_end).unwrap(), format!(
-                "Expected {} args but got {}",
-                fixed_args.len(), actual_args.len()
-            )));
+            return Err(Error::new(
+                arg_start.join(arg_end).unwrap(),
+                format!(
+                    "Expected {} args but got {}",
+                    fixed_args.len(),
+                    actual_args.len()
+                ),
+            ));
         }
         for (index, (actual, &expected)) in actual_args.iter().zip(fixed_args).enumerate() {
             if *actual != expected {
                 return Err(Error::new(
                     actual.span(),
-                    format!("Expected arg #{} to be named {:?}", index, expected)
+                    format!("Expected arg #{} to be named {:?}", index, expected),
                 ));
             }
         }
@@ -328,7 +340,10 @@ impl KnownArgClosure {
         let body;
         let brace = braced!(body in input);
         let body = body.parse::<TokenStream>()?;
-        Ok(KnownArgClosure { body: quote!({ #body }), brace })
+        Ok(KnownArgClosure {
+            body: quote!({ #body }),
+            brace,
+        })
     }
 }
 #[derive(Debug, Clone)]
@@ -346,29 +361,31 @@ impl CollectImplClosure {
 }
 impl MacroArg for CollectImplClosure {
     fn parse_macro_arg(input: ParseStream) -> syn::Result<Self> {
-        Ok(CollectImplClosure(KnownArgClosure::parse_with_fixed_args(input, &["self", "context"])?))
+        Ok(CollectImplClosure(KnownArgClosure::parse_with_fixed_args(
+            input,
+            &["self", "context"],
+        )?))
     }
 }
 
 fn create_clause_with_default(
-    target: &Option<TraitRequirements>, generic_params: &[GenericParam],
-    default_bounds: Vec<TypeParamBound>
+    target: &Option<TraitRequirements>,
+    generic_params: &[GenericParam],
+    default_bounds: Vec<TypeParamBound>,
 ) -> Result<WhereClause, NeverClauseError> {
-    create_clause_with_default_and_ignored(
-        target, generic_params, default_bounds, None
-    )
+    create_clause_with_default_and_ignored(target, generic_params, default_bounds, None)
 }
 fn create_clause_with_default_and_ignored(
     target: &Option<TraitRequirements>,
     generic_params: &[GenericParam],
     default_bounds: Vec<TypeParamBound>,
-    mut should_ignore: Option<&mut dyn FnMut(&GenericParam) -> bool>
+    mut should_ignore: Option<&mut dyn FnMut(&GenericParam) -> bool>,
 ) -> Result<WhereClause, NeverClauseError> {
     Ok(match *target {
         Some(TraitRequirements::Never { span }) => {
             // do not implement
-            return Err(NeverClauseError { span })
-        },
+            return Err(NeverClauseError { span });
+        }
         Some(TraitRequirements::Where(ref explicit)) => explicit.clone(),
         Some(TraitRequirements::Always { span: _ }) => {
             // Absolutely no conditions on implementation
@@ -379,16 +396,20 @@ fn create_clause_with_default_and_ignored(
             // Infer bounds for all params
             for param in generic_params {
                 if let Some(ref mut should_ignore) = should_ignore {
-                    if should_ignore(param) { continue }
+                    if should_ignore(param) {
+                        continue;
+                    }
                 }
                 if let GenericParam::Type(ref t) = param {
                     let ident = &t.ident;
-                    where_clause.predicates.push(WherePredicate::Type(syn::PredicateType {
-                        bounded_ty: parse_quote!(#ident),
-                        colon_token: Default::default(),
-                        bounds: default_bounds.iter().cloned().collect(),
-                        lifetimes: None
-                    }))
+                    where_clause
+                        .predicates
+                        .push(WherePredicate::Type(syn::PredicateType {
+                            bounded_ty: parse_quote!(#ident),
+                            colon_token: Default::default(),
+                            bounds: default_bounds.iter().cloned().collect(),
+                            lifetimes: None,
+                        }))
                 }
             }
             where_clause
@@ -400,5 +421,5 @@ fn create_clause_with_default_and_ignored(
 /// explicitly disabling the clause
 #[derive(Debug)]
 struct NeverClauseError {
-    span: Span
+    span: Span,
 }
