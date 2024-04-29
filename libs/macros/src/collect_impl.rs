@@ -1,4 +1,4 @@
-/ce/! The implementation of `unsafe_collect_impl!`
+//! The implementation of `unsafe_collect_impl!`
 //!
 //! Loosely based on `zerogc_derive::unsafe_gc_impl!` version `0.2.0-alpha.7`.
 //! See here for the zerogc implementation:

@@ -42,8 +42,12 @@ impl LayoutExt {
         let new_align = Self::const_max(self.0.align(), next.align());
         let pad = self.padding_needed_for(next.align());
 
-        let Some(offset) = self.size().checked_add(pad) else { return LayoutError } ;
-        let Some(new_size) = offset.checked_add(next.size()) else { return LayoutError };
+        let Some(offset) = self.size().checked_add(pad) else {
+            return LayoutError;
+        };
+        let Some(new_size) = offset.checked_add(next.size()) else {
+            return LayoutError;
+        };
 
         /*
          * SAFETY: We checked size above, align already guaranteed to be power of two
@@ -54,13 +58,12 @@ impl LayoutExt {
             return Err(LayoutError);
         } else {
             Ok((
-                unsafe { Layout::from_size_align_unchecked(new_size, new_align)  },
-                offset
+                unsafe { Layout::from_size_align_unchecked(new_size, new_align) },
+                offset,
             ))
         }
     }
 }
-
 
 #[inline]
 const fn const_max(first: usize, second: usize) -> usize {

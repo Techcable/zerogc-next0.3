@@ -1,7 +1,7 @@
-use std::ptr::NonNull;
 use crate::collect::{Collect, NullCollect};
-use crate::CollectorId;
 use crate::context::CollectContext;
+use crate::CollectorId;
+use std::ptr::NonNull;
 
 unsafe impl<Id: CollectorId, T: Collect<Id>> Collect<Id> for Vec<T> {
     type Collected<'newgc> = Vec<T::Collected<'newgc>>;

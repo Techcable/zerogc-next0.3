@@ -1,9 +1,9 @@
+use crate::context::{GcHeader, GcLayout, GcTypeInfo};
+use crate::utils::LayoutExt;
+use crate::CollectorId;
 use std::alloc::Layout;
 use std::cell::Cell;
 use std::ptr::NonNull;
-use crate::CollectorId;
-use crate::context::{GcHeader, GcLayout, GcTypeInfo};
-use crate::utils::LayoutExt;
 
 /// A yong-generation object-space
 ///
@@ -22,8 +22,8 @@ impl<Id: CollectorId> YoungGenerationSpace<Id> {
     pub fn alloc_uninit(
         &self,
         layout_info: GcLayout,
-        type_info: &'static GcTypeInfo<Id>
-    ) -> (*mut GcHeader<Id>, NonNull<u8>){
+        type_info: &'static GcTypeInfo<Id>,
+    ) -> (*mut GcHeader<Id>, NonNull<u8>) {
         debug_assert_eq!(layout_info, type_info.layout_info);
     }
     fn ensure_chunk(&self, layout: Layout) -> Layout {
@@ -41,7 +41,7 @@ pub struct ChunkHeader {
 impl ChunkHeader {
     #[inline]
     fn data_start_ptr(&self) -> NonNull<u8> {
-        unsafe  {
+        unsafe {
             NonNull::new_unchecked(
                 (self as *const Self as *const u8).add(Self::DATA_OFFSET) as *mut u8
             )
@@ -49,9 +49,7 @@ impl ChunkHeader {
     }
     #[inline]
     fn data_end_ptr(&self) -> NonNull<u8> {
-        unsafe {
-            NonNull::new_unchecked(self.start_ptr().as_ptr().add(self.data_size))
-        }
+        unsafe { NonNull::new_unchecked(self.start_ptr().as_ptr().add(self.data_size)) }
     }
     #[inline]
     fn overall_layout(&self) -> Layout {
@@ -59,15 +57,14 @@ impl ChunkHeader {
         unsafe {
             Layout::from_size_align_unchecked(
                 Self::DATA_OFFSET.unchecked_add(self.data_size),
-                Self::DATA_ALIGNMENT
-            ).unwrap()
+                Self::DATA_ALIGNMENT,
+            )
+            .unwrap()
         }
     }
     #[inline]
     fn data_layout(&self) -> Layout {
-        unsafe {
-            Layout::from_size_align_unchecked(self.data_size, Self::DATA_ALIGNMENT)
-        }
+        unsafe { Layout::from_size_align_unchecked(self.data_size, Self::DATA_ALIGNMENT) }
     }
     const HEADER_LAYOUT: Layout = Layout::new::<Self>();
     pub const DATA_OFFSET: usize = {

@@ -1,8 +1,8 @@
 pub(crate) mod layout_helpers;
 
-use std::mem::{self, ManuallyDrop};
-use crate::Collect;
 pub(crate) use self::layout_helpers::LayoutExt;
+use crate::Collect;
+use std::mem::{self, ManuallyDrop};
 
 /// Transmute one type into another,
 /// without doing compile-time checks for sizes.
@@ -34,11 +34,10 @@ pub unsafe fn transmute_arbitrary<Src, Dst>(val: Src) -> Dst {
     } else {
         mismatch_transmute_sizes(
             TransmuteTypeInfo::new::<Src>(),
-            TransmuteTypeInfo::new::<Dst>()
+            TransmuteTypeInfo::new::<Dst>(),
         )
     }
 }
-
 
 struct TransmuteTypeInfo {
     size: usize,
@@ -49,7 +48,7 @@ impl TransmuteTypeInfo {
     pub fn new<T>() -> Self {
         TransmuteTypeInfo {
             size: std::mem::size_of::<T>(),
-            type_name: std::any::type_name::<T>()
+            type_name: std::any::type_name::<T>(),
         }
     }
 }
@@ -58,11 +57,9 @@ impl TransmuteTypeInfo {
 #[track_caller]
 fn mismatch_transmute_sizes(src: TransmuteTypeInfo, dst: TransmuteTypeInfo) -> ! {
     assert_eq!(
-        src.size,
-        dst.size,
+        src.size, dst.size,
         "Mismatched size between Src `{}` and Dst `{}`",
-        src.type_name,
-        dst.type_name
+        src.type_name, dst.type_name
     );
     unreachable!() // sizes actually match
 }

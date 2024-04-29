@@ -1,18 +1,17 @@
 mod young;
 
+use crate::gcptr::Gc;
+use crate::utils::LayoutExt;
+use crate::{Collect, NullCollect};
+use allocator_api2::alloc::Allocator;
+use bitbybit::bitfield;
+use bumpalo::Bump;
 use std::alloc::{Layout, LayoutError};
 use std::any::TypeId;
 use std::cmp;
 use std::fmt::Debug;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
-use allocator_api2::alloc::Allocator;
-use bumpalo::Bump;
-use bitbybit::bitfield;
-use crate::{Collect, NullCollect};
-use crate::gcptr::Gc;
-use crate::utils::LayoutExt;
-
 
 pub enum SingletonStatus {
     /// The singleton is thread-local.
@@ -28,7 +27,7 @@ pub enum SingletonStatus {
     /// This is faster to resolve,
     /// and can further assume to be unique
     /// across the entire program.
-    Global
+    Global,
 }
 
 pub unsafe trait CollectorId: Copy + Debug + Eq + 'static {
@@ -58,9 +57,7 @@ impl<Id: CollectorId> GarbageCollector<Id> {
         let allocatd = self.allocator.alloc_layout();
         self.gc
     }
-    unsafe fn init_alloc<T: CollectorId>(ptr: NonNull<GcBox<T>>) -> Gc<'_, T, Id> {
-
-    }
+    unsafe fn init_alloc<T: CollectorId>(ptr: NonNull<GcBox<T>>) -> Gc<'_, T, Id> {}
 }
 
 pub(crate) struct GcTypeInfo<Id> {
@@ -73,7 +70,7 @@ trait TypeIdInit<Id: CollectorId, T: Collect<Id>> {
         let drop_func = if std::mem::needs_drop::<T>() {
             unsafe {
                 Some(std::mem::transmute::<_, unsafe fn(*mut ())>(
-                    std::ptr::drop_in_place as unsafe fn(*mut T)
+                    std::ptr::drop_in_place as unsafe fn(*mut T),
                 ))
             }
         } else {
@@ -118,7 +115,7 @@ pub(crate) struct GcHeader<Id: CollectorId> {
     state_bits: GcStateBits,
     alloc_info: AllocInfo<T>,
     metadata: HeaderMetadata<Id>,
-    collector_id: Id
+    collector_id: Id,
 }
 impl<Id: CollectorId> GcHeader<Id> {
     const HEADER_LAYOUT: Layout = Layout::new::<Self>();
@@ -142,10 +139,16 @@ impl<Id: CollectorId> GcHeader<Id> {
 
     #[inline]
     pub const fn determine_layout(type_layout: Layout) -> GcLayout {
-        let Ok((overall_layout, value_offset)) = LayoutExt(Self::HEADER_LAYOUT)
-            .extend(type_layout) else { panic!("Layout error") };
+        let Ok((overall_layout, value_offset)) = LayoutExt(Self::HEADER_LAYOUT).extend(type_layout)
+        else {
+            panic!("Layout error")
+        };
         let overall_layout = LayoutExt(overall_layout).pad_to_align();
-        GcLayout { value_offset, overall_layout, type_layout }
+        GcLayout {
+            value_offset,
+            overall_layout,
+            type_layout,
+        }
     }
 }
 
@@ -158,7 +161,7 @@ pub(crate) struct GcLayout {
     pub type_layout: Layout,
     pub overall_layout: Layout,
     /// The offset between the end of the header and the beginning of the value
-    pub value_offset: usize
+    pub value_offset: usize,
 }
 
 pub struct CollectContext<'newgc, Id: CollectorId> {
@@ -176,7 +179,7 @@ impl<'newgc, Id: CollectorId> CollectContext<'newgc, Id> {
     }
     unsafe fn collect_gc_ptr<'gc, T: Collect<Id>>(
         &mut self,
-        target: Gc<'gc, T, Id>
+        target: Gc<'gc, T, Id>,
     ) -> Gc<'newgc, T::Collected<'newgc>, Id> {
         debug_assert_eq!(target.id(), self.id());
         let header = target.header();

@@ -1,5 +1,5 @@
-use std::ptr::NonNull;
 use crate::CollectContext;
+use std::ptr::NonNull;
 #[macro_export]
 macro_rules! static_null_trace {
     ($($target:ident),*) => {

@@ -5,8 +5,8 @@ use std::mem::ManuallyDrop;
 use std::ops::Deref;
 use std::ptr::NonNull;
 
-use crate::{Collect, CollectContext, CollectorId};
 use crate::context::{GcHeader, GcTypeInfo};
+use crate::{Collect, CollectContext, CollectorId};
 
 pub struct Gc<'gc, T, Id: CollectorId> {
     ptr: NonNull<T>,
@@ -18,15 +18,15 @@ impl<'gc, T, Id: CollectorId> Gc<'gc, T, Id> {
     pub fn id(&self) -> Id {
         match unsafe { Id::summon_singleton() } {
             None => self.header().id(),
-            Some(id) => id
+            Some(id) => id,
         }
     }
 
     pub(crate) fn header(&self) -> &'_ GcHeader<Id> {
         unsafe {
-            &*((self.ptr.as_ptr() as *mut u8).sub(
-                const { GcHeader::determine_layout(Layout::new()).value_offset }
-            ) as *mut GcHeader<Id>)
+            &*((self.ptr.as_ptr() as *mut u8)
+                .sub(const { GcHeader::determine_layout(Layout::new()).value_offset })
+                as *mut GcHeader<Id>)
         }
     }
 
@@ -34,25 +34,22 @@ impl<'gc, T, Id: CollectorId> Gc<'gc, T, Id> {
         GcTypeInfo::of::<Self>()
     }
 
-
     #[inline(always)]
     pub unsafe fn from_raw_ptr(ptr: NonNull<T>, id: Id) -> Self {
         Gc {
-            ptr, id,
+            ptr,
+            id,
             marker: PhantomData,
             collect_marker: PhantomData,
         }
     }
 }
-unsafe impl<'gc, Id: CollectorId, T: Collect<Id>> Collect<Id>  for Gc<'gc, T, Id> {
+unsafe impl<'gc, Id: CollectorId, T: Collect<Id>> Collect<Id> for Gc<'gc, T, Id> {
     type Collected<'newgc> = Gc<'newgc, T::Collected<'newgc>, Id>;
     const NEEDS_COLLECT: bool = true;
 
     #[inline]
-    unsafe fn collect_inplace(
-        target: NonNull<Self>,
-        context: &mut CollectContext<'_, Id>
-    ) {
+    unsafe fn collect_inplace(target: NonNull<Self>, context: &mut CollectContext<'_, Id>) {
         let resolved = target.as_ref();
         if matches!(Id::SINGLETON, None) && resolved.id() != context.id() {
             return;
