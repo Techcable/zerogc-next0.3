@@ -19,6 +19,7 @@ use crate::Collect;
 use crate::utils::AbortFailureGuard;
 
 pub(crate) mod layout;
+mod alloc;
 mod old;
 mod young;
 
