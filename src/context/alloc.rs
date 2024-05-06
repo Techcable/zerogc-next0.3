@@ -4,7 +4,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::ptr::NonNull;
 
-use allocator_api2::alloc::{Allocator, AllocError};
+use allocator_api2::alloc::{AllocError, Allocator};
 
 pub struct CountingAlloc<A: Allocator> {
     alloc: A,
@@ -14,7 +14,8 @@ impl<A: Allocator> CountingAlloc<A> {
     #[inline]
     pub fn new(alloc: A) -> Self {
         CountingAlloc {
-            alloc, allocated_bytes: Cell::new(0)
+            alloc,
+            allocated_bytes: Cell::new(0),
         }
     }
 
@@ -38,15 +39,16 @@ unsafe impl<A: Allocator> Allocator for CountingAlloc<A> {
     #[inline]
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         let res = self.as_inner().allocate(layout)?;
-        self.allocated_bytes.set(self.allocated_bytes.get() + res.len());
+        self.allocated_bytes
+            .set(self.allocated_bytes.get() + res.len());
         Ok(res)
     }
-
 
     #[inline]
     unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
         self.as_inner().deallocate(ptr, layout);
-        self.allocated_bytes.set(self.allocated_bytes.get() - layout.size());
+        self.allocated_bytes
+            .set(self.allocated_bytes.get() - layout.size());
     }
 }
 
@@ -67,7 +69,8 @@ pub struct ArenaAlloc<A: Allocator> {
 impl<A: Allocator> ArenaAlloc<A> {
     pub fn new(alloc: A) -> Self {
         ArenaAlloc {
-            alloc, allocated_objects: Default::default()
+            alloc,
+            allocated_objects: Default::default(),
         }
     }
 
@@ -84,9 +87,7 @@ unsafe impl<A: Allocator> Allocator for ArenaAlloc<A> {
         let res = self.alloc.allocate(layout)?;
         self.allocated_objects.borrow_mut().push(AllocObject {
             ptr: res.cast(),
-            layout: Layout::from_size_align(
-                res.len(), layout.align()
-            ).unwrap()
+            layout: Layout::from_size_align(res.len(), layout.align()).unwrap(),
         });
         Ok(res)
     }

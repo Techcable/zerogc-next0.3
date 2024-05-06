@@ -1,23 +1,22 @@
+use allocator_api2::alloc::{AllocError, Allocator};
+use bumpalo::Bump;
 use std::alloc::Layout;
 use std::cell::Cell;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::ptr::NonNull;
-use allocator_api2::alloc::{Allocator, AllocError};
-use bumpalo::Bump;
 
-
+use crate::context::alloc::{ArenaAlloc, CountingAlloc};
 use crate::context::layout::{AllocInfo, GcHeader};
-use crate::context::{GenerationId};
+use crate::context::GenerationId;
 use crate::utils::Alignment;
 use crate::CollectorId;
-use crate::context::alloc::{CountingAlloc, ArenaAlloc};
 
 struct YoungAlloc {
     #[cfg(feature = "debug-alloc")]
     group: ArenaAlloc<allocator_api2::alloc::Global>,
     #[cfg(not(feature = "debug-alloc"))]
-    bump: Bump
+    bump: Bump,
 }
 impl YoungAlloc {
     pub fn new() -> Self {
@@ -29,9 +28,7 @@ impl YoungAlloc {
         }
         #[cfg(not(feature = "debug-alloc"))]
         {
-            YoungAlloc {
-                bump: Bump::new(),
-            }
+            YoungAlloc { bump: Bump::new() }
         }
     }
     fn alloc_impl(&self) -> impl Allocator + '_ {

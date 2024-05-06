@@ -272,15 +272,18 @@ pub(crate) struct GcHeader<Id: CollectorId> {
 }
 impl<Id: CollectorId> Debug for GcHeader<Id> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-       f.debug_struct("GcHeader")
-           .field("state_bits", &self.state_bits.get())
-           .field("metadata", if self.state_bits.get().forwarded() {
-               unsafe { &self.metadata.forward_ptr }
-           } else {
-               unsafe { &self.metadata.type_info }
-           })
-           .field("collector_id", &self.collector_id)
-           .finish_non_exhaustive()
+        f.debug_struct("GcHeader")
+            .field("state_bits", &self.state_bits.get())
+            .field(
+                "metadata",
+                if self.state_bits.get().forwarded() {
+                    unsafe { &self.metadata.forward_ptr }
+                } else {
+                    unsafe { &self.metadata.type_info }
+                },
+            )
+            .field("collector_id", &self.collector_id)
+            .finish_non_exhaustive()
     }
 }
 impl<Id: CollectorId> GcHeader<Id> {

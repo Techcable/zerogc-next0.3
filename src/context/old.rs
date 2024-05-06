@@ -1,6 +1,6 @@
-use std::alloc::Layout;
-use allocator_api2::alloc::{Allocator, AllocError};
+use allocator_api2::alloc::{AllocError, Allocator};
 use copygc_mimalloc_semisafe::heap::MimallocHeap;
+use std::alloc::Layout;
 use std::cell::{Cell, UnsafeCell};
 use std::ptr::NonNull;
 
@@ -9,10 +9,10 @@ use crate::context::{CollectorState, GenerationId};
 use crate::CollectorId;
 
 mod fallback {
+    use allocator_api2::alloc::AllocError;
     use std::alloc::Layout;
     use std::collections::HashMap;
     use std::ptr::NonNull;
-    use allocator_api2::alloc::AllocError;
 
     pub struct HeapAllocFallback;
     impl HeapAllocFallback {
@@ -28,7 +28,10 @@ mod fallback {
                 if ptr.is_null() {
                     Err(AllocError)
                 } else {
-                    Ok(NonNull::slice_from_raw_parts(NonNull::new_unchecked(ptr), layout.size()))
+                    Ok(NonNull::slice_from_raw_parts(
+                        NonNull::new_unchecked(ptr),
+                        layout.size(),
+                    ))
                 }
             }
         }
@@ -46,19 +49,15 @@ type HeapAllocator = copygc_mimalloc_semisafe::heap::MimallocHeap;
 
 const DROP_NEEDS_EXPLICIT_FREE: bool = cfg!(any(miri, feature = "debug-alloc"));
 
-
 enum ObjectFreeCondition<'a, Id: CollectorId> {
     /// Free the object if it has not been marked.
     ///
     /// Used to sweep objects.
-    Unmarked {
-        state: &'a CollectorState<Id>
-    },
+    Unmarked { state: &'a CollectorState<Id> },
     /// Unconditionally free the object.
     ///
     /// Used to destroy the
     Always,
-
 }
 
 pub struct OldGenerationSpace<Id: CollectorId> {
@@ -74,7 +73,7 @@ impl<Id: CollectorId> OldGenerationSpace<Id> {
             heap: HeapAllocator::new(),
             live_objects: UnsafeCell::new(Vec::new()),
             collector_id: id,
-            allocated_bytes: Cell::new(0)
+            allocated_bytes: Cell::new(0),
         }
     }
 
@@ -95,7 +94,7 @@ impl<Id: CollectorId> OldGenerationSpace<Id> {
                 ObjectFreeCondition::Unmarked { state } => {
                     let mark_bits = header.state_bits.get().raw_mark_bits().resolve(state);
                     match mark_bits {
-                        GcMarkBits::White => true, // should free
+                        GcMarkBits::White => true,  // should free
                         GcMarkBits::Black => false, // should not free
                     }
                 }
@@ -112,10 +111,13 @@ impl<Id: CollectorId> OldGenerationSpace<Id> {
                     header.metadata.type_info.layout.overall_layout()
                 };
                 self.allocated_bytes.set(
-                    self.allocated_bytes.get().checked_sub(overall_layout.size())
-                        .expect("allocated size underflow")
+                    self.allocated_bytes
+                        .get()
+                        .checked_sub(overall_layout.size())
+                        .expect("allocated size underflow"),
                 );
-                self.heap.deallocate(NonNull::from(header).cast(), overall_layout);
+                self.heap
+                    .deallocate(NonNull::from(header).cast(), overall_layout);
                 false
             } else {
                 // marked (should not free)
@@ -140,7 +142,11 @@ impl<Id: CollectorId> OldGenerationSpace<Id> {
         assert!(!header.as_ref().state_bits.get().value_initialized());
         let array = header.as_ref().state_bits.get().array();
         let overall_layout = if array {
-            header.as_ref().assume_array_header().layout_info().overall_layout()
+            header
+                .as_ref()
+                .assume_array_header()
+                .layout_info()
+                .overall_layout()
         } else {
             header.as_ref().metadata.type_info.layout.overall_layout()
         };
@@ -152,8 +158,12 @@ impl<Id: CollectorId> OldGenerationSpace<Id> {
             *obj_ref = None; // null out remaining reference
         }
         self.heap.deallocate(header.cast(), overall_layout);
-        self.allocated_bytes.set(self.allocated_bytes.get().checked_sub(overall_layout.size())
-            .expect("dealloc size overflow"))
+        self.allocated_bytes.set(
+            self.allocated_bytes
+                .get()
+                .checked_sub(overall_layout.size())
+                .expect("dealloc size overflow"),
+        )
     }
 
     #[inline]
@@ -166,8 +176,12 @@ impl<Id: CollectorId> OldGenerationSpace<Id> {
             Ok(raw_ptr) => raw_ptr,
             Err(allocator_api2::alloc::AllocError) => return Err(OldAllocError::OutOfMemory),
         };
-        self.allocated_bytes.set(self.allocated_bytes.get().checked_add(overall_layout.size())
-            .expect("allocated size overflow"));
+        self.allocated_bytes.set(
+            self.allocated_bytes
+                .get()
+                .checked_add(overall_layout.size())
+                .expect("allocated size overflow"),
+        );
         let header_ptr = raw_ptr.cast::<T::Header>();
         let live_object_index: u32;
         {

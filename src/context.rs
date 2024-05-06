@@ -15,11 +15,11 @@ use crate::context::layout::{
 use crate::context::old::OldGenerationSpace;
 use crate::context::young::{YoungAllocError, YoungGenerationSpace};
 use crate::gcptr::Gc;
-use crate::Collect;
 use crate::utils::AbortFailureGuard;
+use crate::Collect;
 
-pub(crate) mod layout;
 mod alloc;
+pub(crate) mod layout;
 mod old;
 mod young;
 
@@ -115,8 +115,8 @@ impl GenerationSizes {
 
     #[inline]
     pub fn meets_either_threshold(&self, threshold: GenerationSizes) -> bool {
-        self.young_generation_size >= threshold.young_generation_size ||
-            self.old_generation_size >= threshold.old_generation_size
+        self.young_generation_size >= threshold.young_generation_size
+            || self.old_generation_size >= threshold.old_generation_size
     }
 }
 
@@ -139,7 +139,7 @@ impl<Id: CollectorId> GarbageCollector<Id> {
             old_generation: OldGenerationSpace::new(id),
             roots: RefCell::new(Vec::new()),
             last_collect_size: None,
-            collector_id: id
+            collector_id: id,
         }
     }
 
@@ -164,13 +164,13 @@ impl<Id: CollectorId> GarbageCollector<Id> {
             });
             let initialization_guard = DestroyUninitValueGuard {
                 header,
-                old_generation: &self.old_generation
+                old_generation: &self.old_generation,
             };
-            let value_ptr = header.as_ref().regular_value_ptr().cast::<T>() ;
+            let value_ptr = header.as_ref().regular_value_ptr().cast::<T>();
             value_ptr.as_ptr().write(func());
-            header.as_ref().update_state_bits(|state| {
-                state.with_value_initialized(true)
-            });
+            header
+                .as_ref()
+                .update_state_bits(|state| state.with_value_initialized(true));
             initialization_guard.defuse(); // successful initialization;
             Gc::from_raw_ptr(value_ptr)
         }
@@ -181,13 +181,15 @@ impl<Id: CollectorId> GarbageCollector<Id> {
         match self.young_generation.alloc_raw(target) {
             Ok(res) => res,
             Err(YoungAllocError::SizeExceedsLimit) => self.alloc_raw_fallback(target),
-            Err(error @ YoungAllocError::OutOfMemory) => Self::oom(error)
+            Err(error @ YoungAllocError::OutOfMemory) => Self::oom(error),
         }
     }
 
     #[cold]
     unsafe fn alloc_raw_fallback<T: RawAllocTarget<Id>>(&self, target: &T) -> NonNull<T::Header> {
-        self.old_generation.alloc_raw(target).unwrap_or_else(|err| Self::oom(err))
+        self.old_generation
+            .alloc_raw(target)
+            .unwrap_or_else(|err| Self::oom(err))
     }
 
     #[cold]
@@ -197,17 +199,20 @@ impl<Id: CollectorId> GarbageCollector<Id> {
     }
 
     #[inline]
-    pub fn root<'gc, T: Collect<Id>>(&'gc self, val: Gc<'gc, T, Id>) -> GcHandle<T::Collected<'static>, Id> {
+    pub fn root<'gc, T: Collect<Id>>(
+        &'gc self,
+        val: Gc<'gc, T, Id>,
+    ) -> GcHandle<T::Collected<'static>, Id> {
         let mut roots = self.roots.borrow_mut();
         let root = Rc::new(GcRootBox {
-            header: Cell::new(NonNull::from(val.header()))
+            header: Cell::new(NonNull::from(val.header())),
         });
         roots.push(Rc::downgrade(&root));
         drop(roots); // drop refcell guard
         GcHandle {
             ptr: root,
             id: self.id(),
-            marker: PhantomData
+            marker: PhantomData,
         }
     }
 
@@ -233,12 +238,12 @@ impl<Id: CollectorId> GarbageCollector<Id> {
                     let new_header = unsafe { context.collect_gcheader(root.header.get()) };
                     root.header.set(new_header);
                     true // keep live root
-                },
+                }
                 None => false, // delete dead root
             }
         });
         drop(roots); // release guard
-        // tracing failure is fatal, but sweeping fatal is fine
+                     // tracing failure is fatal, but sweeping fatal is fine
         failure_guard.defuse();
         // now sweep
         unsafe {
@@ -249,12 +254,22 @@ impl<Id: CollectorId> GarbageCollector<Id> {
         #[cfg(debug_assertions)]
         for root in self.roots.get_mut().iter() {
             unsafe {
-                assert!(!root.upgrade().unwrap().header.get().as_ref().state_bits.get().forwarded());
+                assert!(!root
+                    .upgrade()
+                    .unwrap()
+                    .header
+                    .get()
+                    .as_ref()
+                    .state_bits
+                    .get()
+                    .forwarded());
             }
         }
 
         // invert meaning of the mark bits
-        self.state.mark_bits_inverted.set(!self.state.mark_bits_inverted.get());
+        self.state
+            .mark_bits_inverted
+            .set(!self.state.mark_bits_inverted.get());
         // count size to trigger next gc
         self.last_collect_size = Some(self.current_size());
     }
@@ -274,13 +289,14 @@ impl<Id: CollectorId> GarbageCollector<Id> {
             Some(last_sizes) => GenerationSizes {
                 young_generation_size: last_sizes.young_generation_size * 2,
                 old_generation_size: last_sizes.old_generation_size * 2,
-            }
+            },
         }
     }
 
     #[inline]
     fn needs_collection(&self) -> bool {
-        self.current_size().meets_either_threshold(self.threshold_size())
+        self.current_size()
+            .meets_either_threshold(self.threshold_size())
     }
 }
 
@@ -296,15 +312,15 @@ impl<T: Collect<Id>, Id: CollectorId> GcHandle<T, Id> {
     /// Even if this handle is dropped, the value will live until the next collection.
     /// This makes it valid for `'gc`.
     #[inline]
-    pub fn resolve<'gc>(&self, collector: &'gc GarbageCollector<Id>) -> Gc<'gc, T::Collected<'gc>, Id> {
+    pub fn resolve<'gc>(
+        &self,
+        collector: &'gc GarbageCollector<Id>,
+    ) -> Gc<'gc, T::Collected<'gc>, Id> {
         assert_eq!(self.id, collector.id());
         // reload from GcRootBox in case pointer moved
-        unsafe {
-            Gc::from_raw_ptr(self.ptr.header.get().as_ref().regular_value_ptr().cast())
-        }
+        unsafe { Gc::from_raw_ptr(self.ptr.header.get().as_ref().regular_value_ptr().cast()) }
     }
 }
-
 
 unsafe trait RawAllocTarget<Id: CollectorId> {
     const ARRAY: bool;
@@ -433,7 +449,7 @@ impl<'newgc, Id: CollectorId> CollectContext<'newgc, Id> {
             self.collect_gcheader(NonNull::from(target.header()))
                 .as_ref()
                 .regular_value_ptr()
-                .cast()
+                .cast(),
         )
     }
 
@@ -460,13 +476,15 @@ impl<'newgc, Id: CollectorId> CollectContext<'newgc, Id> {
                 );
                 return header.metadata.forward_ptr;
             }
-            mark_bits = header.state_bits.get().raw_mark_bits().resolve(&self.garbage_collector.state);
+            mark_bits = header
+                .state_bits
+                .get()
+                .raw_mark_bits()
+                .resolve(&self.garbage_collector.state);
         }
         match mark_bits {
-            GcMarkBits::White => {
-                self.fallback_collect_gc_header(header)
-            }
-            GcMarkBits::Black => header
+            GcMarkBits::White => self.fallback_collect_gc_header(header),
+            GcMarkBits::Black => header,
         }
     }
 
@@ -546,9 +564,9 @@ impl<'newgc, Id: CollectorId> CollectContext<'newgc, Id> {
                     bits.with_generation(GenerationId::Old)
                         .with_value_initialized(true)
                 });
-                header_ptr.as_ref().update_state_bits(|bits| {
-                    bits.with_forwarded(true)
-                });
+                header_ptr
+                    .as_ref()
+                    .update_state_bits(|bits| bits.with_forwarded(true));
                 (&mut *header_ptr.as_ptr()).metadata.forward_ptr = copied_ptr.cast();
                 // NOTE: Copy uninitialized bytes is safe here, as long as they are not read in dest
                 if array {
@@ -650,7 +668,7 @@ impl<'newgc, Id: CollectorId> CollectContext<'newgc, Id> {
 #[must_use]
 struct DestroyUninitValueGuard<'a, Id: CollectorId> {
     header: NonNull<GcHeader<Id>>,
-    old_generation: &'a OldGenerationSpace<Id>
+    old_generation: &'a OldGenerationSpace<Id>,
 }
 impl<'a, Id: CollectorId> DestroyUninitValueGuard<'a, Id> {
     #[inline]
@@ -675,7 +693,7 @@ impl<Id: CollectorId> Drop for DestroyUninitValueGuard<'_, Id> {
                 GenerationId::Old => {
                     // old-gen needs an explicit free
                     self.old_generation.destroy_uninit_object(self.header);
-                },
+                }
                 GenerationId::Young => {
                     // In young-gen, marking uninitialized is sufficient
                     // it will be automatically freed next sweep

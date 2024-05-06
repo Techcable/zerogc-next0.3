@@ -1,8 +1,8 @@
-use std::cell::{Cell};
-use std::ptr::NonNull;
-use slog::{o, Drain, Logger};
-use copygc::{Gc, Collect, CollectContext, CollectorId, GarbageCollector, NullCollect};
 use copygc::context::SingletonStatus;
+use copygc::{Collect, CollectContext, CollectorId, GarbageCollector, Gc, NullCollect};
+use slog::{o, Drain, Logger};
+use std::cell::Cell;
+use std::ptr::NonNull;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct ThisCollectorId;
@@ -17,24 +17,29 @@ unsafe impl CollectorId for ThisCollectorId {
 }
 
 struct Tree<'gc> {
-    children: Cell<Option<
-        (Gc<'gc, Tree<'gc>, ThisCollectorId>,
-         Gc<'gc, Tree<'gc>, ThisCollectorId>)
-    >>,
+    children: Cell<
+        Option<(
+            Gc<'gc, Tree<'gc>, ThisCollectorId>,
+            Gc<'gc, Tree<'gc>, ThisCollectorId>,
+        )>,
+    >,
 }
 
 unsafe impl<'gc> Collect<ThisCollectorId> for Tree<'gc> {
     type Collected<'newgc> = Tree<'newgc>;
     const NEEDS_COLLECT: bool = true;
 
-    unsafe fn collect_inplace(target: NonNull<Self>, context: &mut CollectContext<'_, ThisCollectorId>) {
+    unsafe fn collect_inplace(
+        target: NonNull<Self>,
+        context: &mut CollectContext<'_, ThisCollectorId>,
+    ) {
         let mut children = target.as_ref().children.get();
         match &mut children {
             Some((left, right)) => {
                 Gc::collect_inplace(NonNull::from(left), context);
                 Gc::collect_inplace(NonNull::from(right), context);
             }
-            None => {}, // no need to traxe
+            None => {} // no need to traxe
         }
         target.as_ref().children.set(children);
     }
@@ -48,7 +53,10 @@ fn item_check(tree: &Tree) -> i32 {
     }
 }
 
-fn bottom_up_tree<'gc>(collector: &'gc GarbageCollector<ThisCollectorId>, depth: i32) -> Gc<'gc, Tree<'gc>, ThisCollectorId> {
+fn bottom_up_tree<'gc>(
+    collector: &'gc GarbageCollector<ThisCollectorId>,
+    depth: i32,
+) -> Gc<'gc, Tree<'gc>, ThisCollectorId> {
     let tree = collector.alloc(Tree {
         children: Cell::new(None),
     });

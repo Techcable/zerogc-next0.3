@@ -1,7 +1,7 @@
 use std::backtrace::{Backtrace, BacktraceStatus};
 use std::fmt::Display;
 use std::mem::ManuallyDrop;
-use std::panic::{Location};
+use std::panic::Location;
 
 mod layout_helpers;
 
@@ -9,7 +9,7 @@ pub use self::layout_helpers::{Alignment, LayoutExt};
 
 enum AbortReason<M: Display> {
     Message(M),
-    FailedAbort
+    FailedAbort,
 }
 
 /// A RAII guard that aborts the process if the operation fails/panics.
@@ -35,7 +35,10 @@ impl<M: Display> AbortFailureGuard<M> {
     #[inline]
     pub fn defuse(mut self) {
         // replace with a dummy value and drop the real value
-        drop(std::mem::replace(&mut self.reason, AbortReason::FailedAbort));
+        drop(std::mem::replace(
+            &mut self.reason,
+            AbortReason::FailedAbort,
+        ));
         std::mem::forget(self);
     }
 
@@ -51,7 +54,7 @@ impl<M: Display> AbortFailureGuard<M> {
                 AbortReason::Message(ref reason) => AbortReason::Message(reason as &'_ dyn Display),
                 AbortReason::FailedAbort => AbortReason::FailedAbort,
             },
-            location: self.location
+            location: self.location,
         }
     }
 }
@@ -63,7 +66,7 @@ impl<'a> AbortFailureGuard<&'a dyn Display> {
             AbortReason::Message(msg) => {
                 let secondary_abort_guard = AbortFailureGuard {
                     reason: AbortReason::<std::convert::Infallible>::FailedAbort,
-                    location: self.location
+                    location: self.location,
                 };
                 eprintln!("Aborting: {msg}");
                 let backtrace = Backtrace::capture();
@@ -71,7 +74,9 @@ impl<'a> AbortFailureGuard<&'a dyn Display> {
                     eprintln!("Location: {location}")
                 }
                 if !std::thread::panicking() {
-                    eprintln!("WARNING: Thread not panicking (forgot to defuse AbortFailureGuard?)");
+                    eprintln!(
+                        "WARNING: Thread not panicking (forgot to defuse AbortFailureGuard?)"
+                    );
                 }
                 if matches!(backtrace.status(), BacktraceStatus::Captured) {
                     eprintln!("Backtrace: {backtrace}");
