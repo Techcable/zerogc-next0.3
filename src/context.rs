@@ -230,7 +230,8 @@ impl<Id: CollectorId> GarbageCollector<Id> {
         roots.retain(|root| {
             match root.upgrade() {
                 Some(root) => {
-                    root.header.set(unsafe { context.collect_gcheader(root.header.get()) });
+                    let new_header = unsafe { context.collect_gcheader(root.header.get()) };
+                    root.header.set(new_header);
                     true // keep live root
                 },
                 None => false, // delete dead root
@@ -244,6 +245,14 @@ impl<Id: CollectorId> GarbageCollector<Id> {
             self.young_generation.sweep();
             self.old_generation.sweep(&self.state);
         }
+        // touch roots to verify validity
+        #[cfg(debug_assertions)]
+        for root in self.roots.get_mut().iter() {
+            unsafe {
+                assert!(!root.upgrade().unwrap().header.get().as_ref().state_bits.get().forwarded());
+            }
+        }
+
         // invert meaning of the mark bits
         self.state.mark_bits_inverted.set(!self.state.mark_bits_inverted.get());
         // count size to trigger next gc
